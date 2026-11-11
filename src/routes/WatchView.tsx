@@ -4,6 +4,8 @@ import { useLibrary } from "../context/LibraryContext";
 import { getProgress, pushRecent, setProgress } from "../lib/watchStorage";
 import { VideoCard } from "../components/VideoCard";
 
+const PROGRESS_SAVE_INTERVAL_MS = 3000;
+
 export function WatchView() {
   const { videoId = "" } = useParams<{ videoId: string }>();
   const { library, findVideoById } = useLibrary();
@@ -12,18 +14,34 @@ export function WatchView() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const lastSavedAt = useRef(0);
 
   useEffect(() => {
     if (!video) return;
 
     let objectUrl: string | null = null;
+    let cancelled = false;
     setPlaybackError(false);
+    setLoadError(null);
     setSrc(null);
+    lastSavedAt.current = 0;
 
-    video.handle.getFile().then((file) => {
-      objectUrl = URL.createObjectURL(file);
-      setSrc(objectUrl);
-    });
+    video.handle
+      .getFile()
+      .then((file) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(file);
+        setSrc(objectUrl);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setLoadError(
+          err instanceof DOMException && err.name === "NotFoundError"
+            ? "The file could not be found. It may have been moved, renamed or deleted."
+            : "The file could not be opened. Folder access may have been lost — try reconnecting the folder.",
+        );
+      });
 
     pushRecent({
       videoId: video.id,
@@ -33,9 +51,20 @@ export function WatchView() {
     });
 
     return () => {
+      cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [video]);
+
+  // timeupdate fires several times per second; only hit localStorage every few seconds,
+  // plus a forced save on pause/end so the exact position isn't lost.
+  const saveProgress = (el: HTMLVideoElement, force = false) => {
+    if (!video || !el.duration) return;
+    const now = Date.now();
+    if (!force && now - lastSavedAt.current < PROGRESS_SAVE_INTERVAL_MS) return;
+    lastSavedAt.current = now;
+    setProgress(video.id, el.currentTime, el.duration);
+  };
 
   if (!video) {
     return <p className="text-neutral-500">Video not found. It may have moved or been removed from the folder.</p>;
@@ -47,8 +76,8 @@ export function WatchView() {
   const savedProgress = getProgress(video.id);
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row">
-      <div className="flex-1">
+    <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row">
+      <div className="min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto">
         <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
           {src && !playbackError && (
             <video
@@ -62,12 +91,17 @@ export function WatchView() {
                   videoRef.current.currentTime = savedProgress.currentTime;
                 }
               }}
-              onTimeUpdate={(e) => {
-                const el = e.currentTarget;
-                if (el.duration) setProgress(video.id, el.currentTime, el.duration);
-              }}
+              onTimeUpdate={(e) => saveProgress(e.currentTarget)}
+              onPause={(e) => saveProgress(e.currentTarget, true)}
+              onEnded={(e) => saveProgress(e.currentTarget, true)}
               onError={() => setPlaybackError(true)}
             />
+          )}
+          {loadError && (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center text-neutral-400">
+              <p className="font-medium text-neutral-200">This video can't be opened</p>
+              <p className="text-sm">{loadError}</p>
+            </div>
           )}
           {playbackError && (
             <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center text-neutral-400">
@@ -91,7 +125,7 @@ export function WatchView() {
       </div>
 
       {upNext.length > 0 && (
-        <aside className="flex w-full flex-col gap-4 lg:w-80">
+        <aside className="flex w-full flex-col gap-4 lg:min-h-0 lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
           <h2 className="text-sm font-semibold text-neutral-300">Up next</h2>
           <div className="flex flex-col gap-4">
             {upNext.map((v) => (

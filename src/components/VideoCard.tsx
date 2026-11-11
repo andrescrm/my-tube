@@ -1,29 +1,48 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { VideoEntry } from "../lib/types";
 import { getThumbnail } from "../lib/thumbnail";
 import { getProgress } from "../lib/watchStorage";
 
 export function VideoCard({ video }: { video: VideoEntry }) {
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const [visible, setVisible] = useState(false);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const progress = getProgress(video.id);
   const progressPct =
     progress && progress.duration > 0 ? Math.min(100, (progress.currentTime / progress.duration) * 100) : 0;
 
+  // Only start generating/loading the thumbnail once the card is (nearly) on screen.
   useEffect(() => {
+    const el = linkRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
     let cancelled = false;
-    video.handle.getFile().then((file) => {
-      getThumbnail(video.id, file).then((url) => {
-        if (!cancelled) setThumbnail(url);
-      });
+    getThumbnail(video.id, () => video.handle.getFile()).then((url) => {
+      if (!cancelled) setThumbnail(url);
     });
     return () => {
       cancelled = true;
     };
-  }, [video]);
+  }, [visible, video]);
 
   return (
     <Link
+      ref={linkRef}
       to={`/watch/${video.id}`}
       className="group flex flex-col gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-red-500"
     >

@@ -3,6 +3,7 @@ import { LibraryProvider } from "./context/LibraryContext";
 import { Layout } from "./components/Layout";
 import { Home } from "./routes/Home";
 import { PlaylistView } from "./routes/PlaylistView";
+import { SearchView } from "./routes/SearchView";
 import { WatchView } from "./routes/WatchView";
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
             <Route path="/playlist/:playlistId" element={<PlaylistView />} />
+            <Route path="/search" element={<SearchView />} />
             <Route path="/watch/:videoId" element={<WatchView />} />
           </Route>
         </Routes>

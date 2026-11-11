@@ -4,8 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Scaffolding is in progress (Vite + React + TypeScript). This file is the design spec agreed with
-the user before implementation; update the Commands section below once real scripts exist.
+The three views (Home, Playlist, Watch) plus search are implemented on Vite + React + TypeScript.
+This file is the design spec agreed with the user; keep it in sync with the code. Not done yet:
+nested folders (v2), autoplay of the next video, automated tests.
 
 ## What this project is
 
@@ -76,15 +77,17 @@ Keep this simple and namespaced, e.g.:
 
 ### Thumbnail cache
 
-In-memory `Map<videoId, blobUrl>` for the session is the minimum bar. Since generation requires
-decoding the video, consider whether persisting generated thumbnails (e.g. to IndexedDB as blobs)
-is worth it to avoid re-decoding every session — this is a reasonable follow-up but not a blocker
-for v1.
+Implemented in `src/lib/thumbnail.ts`: thumbnails are persisted as JPEG blobs in IndexedDB
+(`idb-keyval` custom store `mytube-thumbnails`, keyed by video ID) with an in-memory
+`Map<videoId, blobUrl>` on top for the session. Generation is lazy (cards only request a thumbnail
+once near the viewport via `IntersectionObserver`) and capped at a few concurrent video decodes.
+Failures are not cached, so they are retried the next time a card asks.
 
 ### Routes
 
 - `/` — Home: recently watched + all videos in the implicit Uncategorized collection.
 - `/playlist/:playlistId` — grid of videos inside one top-level folder.
+- `/search?q=` — live search across all videos (matches file name and playlist name).
 - `/watch/:videoId` — player view for a single video.
 
 ### Codec/format constraints

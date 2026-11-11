@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Library, VideoEntry } from "../lib/types";
 import { scanLibrary } from "../lib/scanLibrary";
 import { getStoredRootHandle, setStoredRootHandle, verifyPermission } from "../lib/rootHandleStore";
@@ -13,6 +13,7 @@ type Status =
 interface LibraryContextValue {
   status: Status;
   library: Library | null;
+  allVideos: VideoEntry[];
   pickFolder: () => Promise<void>;
   reconnect: () => Promise<void>;
   findVideoById: (videoId: string) => VideoEntry | undefined;
@@ -89,18 +90,20 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     };
   }, [loadFrom]);
 
-  const findVideoById = useCallback(
-    (videoId: string): VideoEntry | undefined => {
-      if (!library) return undefined;
-      const all = [...library.uncategorized, ...library.playlists.flatMap((p) => p.videos)];
-      return all.find((v) => v.id === videoId);
-    },
+  const allVideos = useMemo(
+    () => (library ? [...library.uncategorized, ...library.playlists.flatMap((p) => p.videos)] : []),
     [library],
+  );
+
+  const findVideoById = useCallback(
+    (videoId: string): VideoEntry | undefined => allVideos.find((v) => v.id === videoId),
+    [allVideos],
   );
 
   const value: LibraryContextValue = {
     status,
     library,
+    allVideos,
     pickFolder,
     reconnect,
     findVideoById,
